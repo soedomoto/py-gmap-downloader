@@ -29,7 +29,7 @@ class MapDownloader(object):
 
         return int(point_x), int(point_y)
 
-    def generate_image(self):
+    def generate_image(self, filename):
         width, height = 256 * (self._x_end + 1 - self._x_start), 256 * (self._y_end + 1 - self._y_start)
         map_img = Image.new('RGB', (width, height))
 
@@ -46,19 +46,17 @@ class MapDownloader(object):
 
                 im = Image.open(current_tile)
                 map_img.paste(im, (x * 256, y * 256))
+                map_img.save(filename)
 
                 os.remove(current_tile)
 
                 p_curr += 1
 
-        return map_img
-
 
 def main():
     try:
         md = MapDownloader(-6.159281, 106.842750, -6.161547, 106.847020, 20)
-        img = md.generate_image()
-        img.save("1.png")
+        md.generate_image('2.png')
 
         print("The map has successfully been created")
     except Exception as e:
