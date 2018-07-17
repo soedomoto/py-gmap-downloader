@@ -41,7 +41,7 @@ class MapDownloader(object):
 
                 url = 'https://mts1.google.com/vt/lyrs=y&x=' + str(self._x_start + x) + '&y=' + str(self._y_start + y) + '&z=' + str(self.zoom)
 
-                current_tile = 'tile-' + str(x) + '_' + str(y) + '_' + str(self.zoom) + '.png'
+                current_tile = 'tile-' + str(self._x_start + x) + '_' + str(self._y_start + y) + '_' + str(self.zoom) + '.png'
                 request.urlretrieve(url, current_tile)
 
                 # im = Image.open(current_tile)
