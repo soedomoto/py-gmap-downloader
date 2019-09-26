@@ -1,17 +1,26 @@
 import math
+import multiprocessing
+
 import os
-from urllib import request
+import queue
+import shutil
+import threading
 from PIL import Image
+from datetime import datetime
+from urllib import request
 
 
 class MapDownloader(object):
     def __init__(self, lat_start, lng_start, lat_end, lng_end, zoom=12, tile_size=256):
+        self.tile_server = 'https://mts1.google.com/vt/lyrs=y&x={}&y={}&z={}'
+
         self.lat_start = lat_start
         self.lng_start = lng_start
         self.lat_end = lat_end
         self.lng_end = lng_end
         self.zoom = zoom
         self.tile_size = tile_size
+        self.q = queue.Queue()
 
         self._generate_xy_point()
 
@@ -29,38 +38,78 @@ class MapDownloader(object):
 
         return int(point_x), int(point_y)
 
-    def generate_image(self, filename):
+    def _fetch_worker(self):
+        while True:
+            item = self.q.get()
+            if item is None:
+                break
+
+            idx, url, current_tile = item
+            print('Fetching #{} of {}: {}'.format(idx, self.q_size, url))
+            request.urlretrieve(url, current_tile)
+
+            self.q.task_done()
+
+    def write_into(self, filename):
+        # create temp dir
+        directory = os.path.abspath('./{}'.format(datetime.now().strftime("%Y-%m-%d_%H-%M-%S")))
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # generate source list
+        idx = 1
+        for x in range(0, self._x_end + 1 - self._x_start):
+            for y in range(0, self._y_end + 1 - self._y_start):
+                url = self.tile_server.format(
+                    str(self._x_start + x), str(self._y_start + y), str(self.zoom))
+                current_tile = os.path.join(directory, 'tile-{}_{}_{}.png'.format(
+                    str(self._x_start + x), str(self._y_start + y), str(self.zoom)))
+                self.q.put((idx, url, current_tile))
+                idx += 1
+
+        # stop workers
+        for i in range(multiprocessing.cpu_count()):
+            self.q.put(None)
+
+        # start fetching tile using multithread to speed up process
+        self.q_size = self.q.qsize()
+
+        threads = []
+        for i in range(multiprocessing.cpu_count()):
+            t = threading.Thread(target=self._fetch_worker)
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join()
+
+        # combine image into single
         width, height = 256 * (self._x_end + 1 - self._x_start), 256 * (self._y_end + 1 - self._y_start)
         map_img = Image.new('RGB', (width, height))
 
-        p_curr, p_target = 1, (self._x_end + 1 - self._x_start) * (self._y_end + 1 - self._y_start)
-
         for x in range(0, self._x_end + 1 - self._x_start):
             for y in range(0, self._y_end + 1 - self._y_start):
-                print('Processing tile #{} of {}'.format(p_curr, p_target))
+                current_tile = os.path.join(directory, 'tile-{}_{}_{}.png'.format(
+                    str(self._x_start + x), str(self._y_start + y), str(self.zoom)))
+                im = Image.open(current_tile)
+                map_img.paste(im, (x * 256, y * 256))
 
-                url = 'https://mts1.google.com/vt/lyrs=y&x=' + str(self._x_start + x) + '&y=' + str(self._y_start + y) + '&z=' + str(self.zoom)
+        map_img.save(filename)
 
-                current_tile = 'tile-' + str(self._x_start + x) + '_' + str(self._y_start + y) + '_' + str(self.zoom) + '.png'
-                request.urlretrieve(url, current_tile)
-
-                # im = Image.open(current_tile)
-                # map_img.paste(im, (x * 256, y * 256))
-                # map_img.save(filename)
-
-                # os.remove(current_tile)
-
-                p_curr += 1
+        # remove temp dir
+        shutil.rmtree(directory)
 
 
 def main():
     try:
-        md = MapDownloader(-6.159281, 106.842750, -6.161547, 106.847020, 20)
-        md.generate_image('2.png')
+        md = MapDownloader(-6.256524, 107.170208, -6.292112, 107.242934, 20)
+        md.write_into('lemanabang.png')
 
         print("The map has successfully been created")
     except Exception as e:
-        print("Could not generate the image - try adjusting the zoom level and checking your coordinates. Cause: {}".format(e))
+        print(
+            "Could not generate the image - try adjusting the zoom level and checking your coordinates. Cause: {}".format(
+                e))
 
 
 if __name__ == '__main__':
