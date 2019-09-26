@@ -12,7 +12,9 @@ from urllib import request
 
 class MapDownloader(object):
     def __init__(self, lat_start, lng_start, lat_end, lng_end, zoom=12, tile_size=256):
-        self.tile_server = 'https://mts1.google.com/vt/lyrs=y&x={}&y={}&z={}'
+        # self.tile_server = 'https://mts1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+        # self.tile_server = 'http://tile.openstreetmap.org/{z}/{x}/{y}.png'
+        self.tile_server = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
         self.lat_start = lat_start
         self.lng_start = lng_start
@@ -20,7 +22,9 @@ class MapDownloader(object):
         self.lng_end = lng_end
         self.zoom = zoom
         self.tile_size = tile_size
+
         self.q = queue.Queue()
+        self.num_worker = multiprocessing.cpu_count() - 1
 
         self._generate_xy_point()
 
@@ -61,21 +65,21 @@ class MapDownloader(object):
         for x in range(0, self._x_end + 1 - self._x_start):
             for y in range(0, self._y_end + 1 - self._y_start):
                 url = self.tile_server.format(
-                    str(self._x_start + x), str(self._y_start + y), str(self.zoom))
+                    x=str(self._x_start + x), y=str(self._y_start + y), z=str(self.zoom))
                 current_tile = os.path.join(directory, 'tile-{}_{}_{}.png'.format(
                     str(self._x_start + x), str(self._y_start + y), str(self.zoom)))
                 self.q.put((idx, url, current_tile))
                 idx += 1
 
         # stop workers
-        for i in range(multiprocessing.cpu_count()):
+        for i in range(self.num_worker):
             self.q.put(None)
 
         # start fetching tile using multithread to speed up process
         self.q_size = self.q.qsize()
 
         threads = []
-        for i in range(multiprocessing.cpu_count()):
+        for i in range(self.num_worker):
             t = threading.Thread(target=self._fetch_worker)
             t.start()
             threads.append(t)
@@ -102,7 +106,7 @@ class MapDownloader(object):
 
 def main():
     try:
-        md = MapDownloader(-6.256524, 107.170208, -6.292112, 107.242934, 20)
+        md = MapDownloader(-6.256524, 107.170208, -6.292112, 107.242934, zoom=17)
         md.write_into('lemanabang.png')
 
         print("The map has successfully been created")
